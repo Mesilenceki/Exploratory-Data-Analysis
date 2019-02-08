@@ -1,0 +1,412 @@
+```{r echo=FALSE,message = FALSE, warning = FALSE,packages}
+ #加载所有的依赖库
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(gridExtra)
+library(reshape2)
+library(GGally)
+
+```
+```{r echo=FALSE, message = FALSE, warning = FALSE,Load_the_Data}
+#加载数据
+data <-read.csv('prosperLoanData.csv',na.strings="",stringsAsFactors=F)
+select_col<- c("ListingNumber","ListingCreationDate","LoanStatus","ClosedDate",
+               "BorrowerAPR","BorrowerRate",
+               "ProsperScore","ListingCategory..numeric.","BorrowerState",
+               "Occupation","EmploymentStatus","IsBorrowerHomeowner",
+               "CreditScoreRangeLower","CreditScoreRangeUpper",
+               "CurrentDelinquencies","AmountDelinquent",
+               "TradesNeverDelinquent..percentage.","IncomeRange",
+               "LoanOriginalAmount","LoanOriginationDate",
+               "LoanOriginationQuarter")
+data <- data[select_col]
+dim(data)
+str(data)
+summary(data)
+```
+
+```{r echo=FALSE,message = FALSE, warning = FALSE, Data_Prepossing}
+data$ListingCreationDate <- as.Date(data$ListingCreationDate,format ="%Y-%m-%d")
+data$LoanOriginationDate <- as.Date(data$LoanOriginationDate,format ="%Y-%m-%d")
+data$ClosedDate <- as.Date(data$ClosedDate,format = "%Y-%m-%d")
+summary(data)
+
+
+#对表中借贷人信息预处理
+data$IncomeRange <- factor(data$IncomeRange, 
+                            levels = c("Not displayed","Not employed", "$0", 
+                                       "$1-24,999", "$25,000-49,999",
+                                       "$50,000-74,999", "$75,000-99,999", 
+                                       "$100,000+"))
+data$EmploymentStatus<- factor(data$EmploymentStatus, 
+                                  levels = c("Employed", "Full-time", 
+                                             "Part-time", "Self-employed",
+                                             "Not employed", "Retired"))
+
+#评估借贷人的信用
+data$CreditScore <-(data$CreditScoreRangeLower +data$CreditScoreRangeUpper)/2
+
+#这笔贷款的详细信息
+data$LoanYear <-as.factor(format(data$LoanOriginationDate, "%Y"))
+data$LoanMonth <-as.factor(format(data$LoanOriginationDate, "%m"))
+data$LoanOriginationQuarter <- factor(data$LoanOriginationQuarter,levels = 
+                                        (c("Q1 2006","Q2 2006","Q3 2006",
+                                           "Q4 2006","Q1 2007","Q2 2007",
+                                           "Q3 2007","Q4 2007","Q1 2008",
+                                           "Q2 2008","Q3 2008","Q4 2008",
+                                           "Q1 2009","Q2 2009","Q3 2009",
+                                           "Q4 2009","Q1 2010","Q2 2010",
+                                           "Q3 2010","Q4 2010","Q1 2011",
+                                           "Q2 2011","Q3 2011","Q4 2011",
+                                           "Q1 2012","Q2 2012","Q3 2012",
+                                           "Q4 2012","Q1 2013","Q2 2013",
+                                           "Q3 2013","Q4 2013","Q1 2014")))
+
+data$ListingCategory <- cut(data$ListingCategory..numeric., breaks = c(0:21),
+                            labels = c("Not Available","DebtCon solidation", 
+                                       "Home Improvement","Business", 
+                                       "Personal Loan", "Student Use", 
+                                       "Auto", "Other", "Baby&Adoption", 
+                                       "Boat", "Cosmetic Procedure", 
+                                       "Engagement Ring","Green Loans", 
+                                       "Household Expenses", "Large Purchases",
+                                       "Medical/Dental", "Motorcycle", "RV", 
+                                       "Taxes", "Vacation","Wedding Loans"))
+
+data$LoanStatus <- factor(data$LoanStatus,levels = c("Completed",
+                                                     "FinalPaymentInProgress",
+                                                     "Current", 
+                                                     "Past Due (1-15 days)", 
+                                                     "Past Due (16-30 days)",
+                                                     "Past Due (31-60 days)", 
+                                                     "Past Due (61-90 days)",
+                                                     "Past Due (91-120 days)", 
+                                                     "Past Due (>120 days)", 
+                                                     "Chargedoff", "Defaulted",
+                                                     "Cancelled"))
+```
+
+# 单变量绘图选择
+```{r echo=FALSE,message = FALSE, warning = FALSE, Univariate_Plots}
+#单变量分析
+
+#借贷人信用分析
+#借贷人的信用得分评估
+table(data$CreditScore)
+ggplot(data = data,aes(x = CreditScore))+geom_histogram(colour = 'white')+ 
+  scale_x_continuous(limits =c(450,880))+ylab("number of Borrower")+
+  ggtitle("histogram of TradesNeverDelinquent..percentage.")
+
+#借贷人的交易拖欠情况
+table(data$TradesNeverDelinquent..percentage.)
+ggplot(data = data,aes(x = TradesNeverDelinquent..percentage.))+
+  geom_histogram(colour = 'white')+ylab("number of Borrower")+
+  ggtitle("Histogram of TradesNeverDelinquent..percentage.")
+
+```
+
+通过接待人的信用得分评估的直方图我们可以看到,用户的信用得分基本符合正态分布
+通过对借贷人交易拖欠款的直方图我们可以发现大多数的用户交易都没有拖欠，只有少部分的用户存在拖欠行为，说明他们的信用很好
+
+
+```{r echo=FALSE,message = FALSE, warning = FALSE}
+
+#借贷人个人信息
+
+#借贷人是否有工作
+table(data$EmploymentStatus)
+ggplot(data = subset(data,!is.na(data$EmploymentStatus)),
+                     aes(x =EmploymentStatus)) +geom_bar(color = 'white')+
+                    ylab("number of Borrower")+
+  ggtitle("barplot of EmploymentStatus")
+
+#借贷人的收入区间以及是否有房产
+table(data$IsBorrowerHomeowner)
+table(data$IncomeRange)
+by(data$IncomeRange,data$IsBorrowerHomeowner,summary)
+ggplot(data =data,aes(x =IncomeRange))+geom_bar(color = 'white')+
+  coord_flip()+ylab("number of Borrower")+
+  ggtitle("barplot of IsBorrowerHomeowner")
+
+```
+
+在事先统计中我们发现有部分人的职业状态显示为NA，在对数据进行筛选后,通过对贷款人工作状态的柱状图，我们可以看到绝大部分用户都是"Employed"状态，其次是"Full-time"。
+通过分析用户的收入区间和是否有房产的统计，我们可以发现在相对高收入的人群(>$50,000)中，有房子的比率是大于五房子的比率的。
+通过分析用户的收入区间分布，我发现大部分贷款用户为中收入水平[$50,000-74,999]和[$25,000-49,999]，其次则是高收入水平。
+
+
+
+```{r echo=FALSE,message = FALSE, warning = FALSE}
+#借贷的具体信息
+#这笔贷款的还款情况
+table(data$LoanStatus)
+ggplot(data = data,aes(x = LoanStatus))+geom_bar(color = 'white')+
+  coord_flip()+ylab("number of Borrower")+
+  ggtitle("barplot of LoanStatus")
+
+#贷款的年份统计
+summary(data$LoanYear)
+by(data$BorrowerAPR,data$LoanYear,summary)
+ggplot(data = data,aes(x = LoanYear))+
+  geom_histogram(color = 'white',stat = 'count')+ylab("number of Borrower")+
+  ggtitle("histogram of LoanYear")
+
+#贷款的原因
+ggplot(data = subset(data,!is.na(data$ListingCategory)),
+       aes(x = ListingCategory))+geom_bar(color = 'white')+
+       coord_flip()+ylab("number of Borrower")+
+       ggtitle("bar plot of ListingCategory")
+
+#贷款的年利率
+ggplot(data = data,aes(x = BorrowerAPR))+geom_histogram(color = 'white')+
+  ylab("total of BorrowerAPR")+ggtitle("histogram of BorrowerAPR")
+
+#贷款的起始数额
+ggplot(data = data,aes(x = LoanOriginalAmount))+geom_histogram(color = 'white')+
+  scale_x_log10()+ylab("Total of LoanOriginalAmount")+
+  ggtitle("histogram of LoanOriginaLAmount")
+  
+```
+
+1)通过观察还款状态的柱状图我们可以发现大部分的贷款还处于借出阶段，其次也有很多的贷款都已经还清，但是遗憾的是还有一部分的贷款由于严重拖欠已经被罚款。
+2)通过观察贷款年份的统计图我们可以发现贷款主要集中带2012和2013年，其次多出现于2007、2008和2014年。
+3)在经过数据的清洗后，通过观察借贷原因的柱状图我们可以发现很多的贷款并没有注明原因，显示为"Not Available",其他有注明原因的很多是"Auto",其次是"Home Improvement","DebtCon solidation","Student Use"和"Business".
+4)通过观察贷款的年利率,我发现该变量的分布基本符合正态分布,分有太大的异常。
+5)在对贷款起始数额的观察中我们发现:贷款数额普遍集中在[0,16000]，说明主要的贷款都是小额度的贷款;并且我们对贷款数额所在轴进行了对数变换，使其分布更接近正态分布。
+# 单变量分析
+
+### 你的数据集结构是什么？
+首先我的数据集由27个变量和113937行数据组成
+我的数据集大概划分为3个部分：
+1）"ProsperScore","CreditScoreRangeLower","CreditScoreRangeUpper",
+"CurrentDelinquencies","AmountDelinquencies","TradeNerverDeliquent..percent",
+"CreditScore":里面包含了用户的信用记录,以及对用户的信用得分的评估等等
+2）"BorrowStates","Occupation","EmploymentStaus","IsBorrowerHomeowner",
+"IncomeRange":里面包含了借贷用户的个人信息（所在州，工作状况，收入，是否有房子）   
+3）"Term","LoanStaus","ClosedDate","BorrowerAPR","BorrowerRate",
+"ListingCategory..numeric","LoanOriginalAmount","LoanOriginalDate",
+"LoanOriginalQuarter","LoanYear","LoanMonth":里面包含了此次贷款的所有细节
+(贷款额，贷款年利率，贷款日期，贷款原因)
+
+### 你的数据集内感兴趣的主要特性有哪些？
+"CreditScore" :他衡量了我们的所有用户的信用程度，让我们更好的评估贷款的风险 
+"BorrowAPR" :我想通过这来分析贷款年利率的变化，看是否与年份以及用户的个人信用情
+             况有关。
+"LoanStaus" :我想分析不同的贷款的还款状况，看是否信用评分高低和贷款原因与这有关
+### 你认为数据集内哪些其他特征可以帮助你探索兴趣特点？
+"IncomeRANGE" :这个更加直观地能让我们了解用户的收入，并且我想借此分析在贷款的人
+               群中的收入高低情况。
+"TradesNeverDelinquent..percentage." :我想他也能让我们更加全面的评估用户在这
+                                      笔贷款中还款的几率。
+"LoanYear" :我认为可以通过这个来作为分类依据帮组我们分析贷款年利率的变化。
+"ListingCategory..numeric":这也能帮助我们分析用户贷款的金额和还款的情况。
+### 根据数据集内已有变量，你是否创建了任何新变量？
+"LoanYear","LoanMonth","ListingCategory","CreditScore"
+### 在已经探究的特性中，是否存在任何异常分布？你是否对数据进行一些操作，如清洁、调整或改变数据的形式？如果是，你为什么会这样做？
+在已经探究的特性中，我并未发现异常的分布。
+我已经数据进行的操作有:将"ListingCreationDate","LoanOriginationDate",
+     "ClosedDated"转化为Datetime格式，因为这样的格式跟便于我们进行统计
+      对"LoanOriginationQuarter","LoanStatus","IncomeRange","EmploymentStatus","ListingCategory"等离散特征的顺序进行了调整，因为这样能让我们在后面的可视化中更加直观的进行观察。
+      
+# 双变量绘图选择
+```{r echo=FALSE,message = FALSE, warning = FALSE, Bivariate_Plots}
+#用户的信用评分和还款状态的关系（离散对连续）
+new_data <-subset(data,data$LoanStatus=='Current'|
+                           data$LoanStatus=='Completed'|
+                           data$LoanStatus=='Chargedoff')
+ggplot(data=new_data,aes(x=CreditScore,fill=LoanStatus)) +
+  geom_histogram(position = 'dodge')+
+  scale_x_continuous(breaks = seq(450,900,25),limits = c(450,900))+
+  ylab("Number of Borrower")+
+  ggtitle("CreditScore Histogram colored by LoanStatus")
+
+
+```
+
+经过上面的单变量分析我们知道"LoanStaus"主要是"Completed","Current","Chargedoff","Defaulted",因此我们在plot是只选了这四类，通过分析上图信用得分和用户的"贷款状态"，我们发现信用得分位于[625,750]区间的用户大多数的贷款处于"Current"状态，其他群间的用户大部分贷款是"Completed"状态。
+
+```{r echo=FALSE,message = FALSE, warning = FALSE}
+#用户的贷款时间与还款状态的关系
+ggplot(data=new_data,aes(x=LoanYear,fill=LoanStatus)) + 
+  geom_bar(position = "dodge",color = 'white')
+
+```
+
+通过上图的观察我们发现用户的贷款状态和用户的贷款时间有很大的关系:借贷时间位于[2012:2014]年间的用户绝大部分的贷款都处于"Current"状态,相反,在2013年以前的借贷用户则大部分处于"Current"状态,其次则是"Chargedoff"(由于拖欠过长时间而被罚款)。
+```{r echo=FALSE,message = FALSE, warning = FALSE}
+#用户的贷款日期与贷款的年利率关系（离散对连续）
+ggplot(data =data,aes(x=LoanOriginationQuarter,y=BorrowerAPR*50))+
+  geom_boxplot()+coord_flip()+ylab("BorrowerAPR")
+p1 <- ggplot(data =data,aes(x=LoanYear,y=BorrowerAPR*50))+geom_boxplot()+
+  ylab("BorrowerAPR")
+p2 <- ggplot(data =data,aes(x=LoanMonth,y=BorrowerAPR*50))+geom_boxplot()+
+  ylab("BorrowerAPR")
+
+grid.arrange(p1,p2)
+
+```
+
+上图展示了年利率与贷款年,月,季度的关系
+我们发现:1)从[2006Q1:2010Q4]年利率随着季度的增加一直在增加,可是从[2011Q1,2014Q1]年利率又开始随着季度的增加而减小
+         2)后面的另外一副年利率与年份的变化箱状图也证实了我们的这一观点,说明年利率与年份有很大的相关性，
+           但同时通过观察年利率与月份的变化箱状图，年利率与月份的相关性并不强。
+
+```{r echo=FALSE,message = FALSE, warning = FALSE}
+#用户的贷款原因和贷款的数额以及还款的关系（连续对离散）
+new_data1<-subset(data,data$ListingCategory=="Student Use"|
+                    data$ListingCategory=="Auto"|
+                    data$ListingCategory=="Home Improvement"|
+                    data$ListingCategory=="DebtCon solidation"|
+                    data$ListingCategory=="Business")
+p3<- ggplot(data =new_data1,aes(x=LoanOriginalAmount,fill=ListingCategory))+
+  geom_histogram(position = 'fill',color = 'white')+
+  scale_x_continuous(breaks = seq(0,35000,5000))+
+  coord_flip()
+p4 <-ggplot(data =new_data1,aes(x=LoanStatus,fill=ListingCategory))+
+  geom_bar(,position = 'fill',color = 'white')+coord_flip()
+grid.arrange(p3,p4)
+
+```
+
+在上面对ListingCategory的探索中,我们发现主要原因显示为"Not Available",其他有注明原因的很多是"Auto",其次是"Home Improvement","DebtCon solidation","Student Use"和"Business",但是由于Not Available对我们的探究没有帮助,因此我们创建了一个仅包含"Home Improvement","DebtCon solidation","Student Use" 和"Business"的数据集。
+1)在探索ListingCategory与贷款数额的关系中我们发现,在大额贷款(30,000:35,000)中,多数的原因是因为"Home Improvement",其次是"DebtCon solidation";在小额贷款(0:15,000)中，多数的原因则是"Auto"其次是"Home Improvement"和"DebtCon solidation"。
+2)在探索ListingCategory与贷款状态的关系中我们发现，各种原因的贷款与还款的状态没有太大的关系，他们之间的变量分布基本一致。
+```{r echo=FALSE,message = FALSE, warning = FALSE}
+#用户的收入与用户交易拖欠款,信用评分的关系（离散对连续）
+p5 <- ggplot(data=data,aes(x=IncomeRange,y=TradesNeverDelinquent..percentage.))+ 
+  geom_boxplot() +geom_line(stat ='summary',fun.y =mean)+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+p6 <- ggplot(data =data,aes(x=IncomeRange,y=CreditScore)) +
+  geom_boxplot()+ coord_cartesian(ylim = c(300,900))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+grid.arrange(p5,p6)
+
+```
+
+在探究用户的收入与用户交易拖欠款,信用评分的关系中, 我发现收入越高的用户他们往往普遍的信用评分更高，并且数据差异性更小。
+说明用户的收入与用户的信用评分有很大的相关性。
+```{r echo=FALSE,message = FALSE, warning = FALSE}
+#相关性分析
+cor.test(x =data$CreditScore,y = data$TradesNeverDelinquent..percentage.,
+         method = 'pearson')
+cor.test(x =data$CreditScore,y = data$BorrowerAPR,method = 'pearson')
+```
+
+在信用评分和用户交易拖欠的比例的相关性分析中，我发现两者有着正相关的关系，但这关系并不强
+
+# 双变量分析
+
+### 探讨你在这部分探究中观察到的一些关系。这些感兴趣的特性与数据集内其他特性有什么区别？
+我的探究分析已经在上面可视化的时候随图展示出来了
+
+### 你是否观察到主要特性与其他特性之间的有趣关系？
+1)我发现收入越高的群体他们的信用评分往往越高。
+2)信用评分相对较高的群体他们按时还款的几率不一定那么高。
+3)大额贷款的原因基本是"DebtCon solidation"和"Home Improvement",然而小额贷款往往有更多其他的原因
+### 你发现最强的关系是什么？
+CreditScore 和IncomeRange
+
+# 多变量绘图选择
+```{r echo=FALSE,message = FALSE, warning = FALSE, Multivariate_Plots}
+#信用评分,贷款数额和还款状态的关系
+ggplot(data =new_data,aes(x=CreditScore,y=LoanOriginalAmount,
+                          color = LoanStatus))+geom_point(alpha =0.01)+
+                          coord_cartesian(xlim = c(400,900))+
+                          geom_jitter()+
+              ggtitle("CreditScore vs LoanOriginalAmount coulr by LoanStatus")
+
+```
+
+在上面信用得分与贷款状态的基础上我们加入了贷款数额仪器分析，我们发现贷款数额小的贷款基本都是"Completed"状态，然而出人意料的是处于"current"状态中的最多的电反而是信用得分较高的用户(650,820),此外我们还发现这个区间的用户往往倾向与借额度更高的贷款。
+```{r echo=FALSE,message = FALSE, warning = FALSE}
+#信用评分，收入区间和还款状态的关系
+new_data2 <-subset(new_data,new_data$IncomeRange=='$1-24,999'|
+                     new_data$IncomeRange =='$25,000-49,999'|
+                     new_data$IncomeRange =='$50,000-74,999'|
+                     new_data$IncomeRange =='$75,000-99,999'|
+                     new_data$IncomeRange =='$100,000+')
+ggplot(data=new_data2,aes(x=CreditScore)) +geom_histogram()+
+  coord_cartesian(xlim = c(400,900))+
+  facet_grid(new_data2$LoanStatus~new_data2$IncomeRange)+
+  ylab("number of Borrowers")+
+  theme(axis.text.x = element_text(angle = 70, hjust = 1))+
+  ggtitle("CreditScore vs IncomeRange vs LoanStatus")
+
+```
+
+首先我们发现用户的数量分布在不同分类的统计下都基本符合正态分布,我发现用户贷款情况主要分布在"Completed"和"Current"中,同时在收入区间为25,000-49,999;50,000-74,999;75,000-99,999;100,000+这几个区间中.
+```{r echo=FALSE,message = FALSE, warning = FALSE}
+#贷款原因,还款状态和工作状态的关系
+new_data3 <-subset(new_data1,new_data1$LoanStatus=='Completed'|
+                     new_data1$LoanStatus =='Current'|
+                     new_data1$LoanStatus =='Chargedoff')
+ggplot(data = new_data3,aes(x = ListingCategory,fill = LoanStatus))+
+  geom_bar(position = 'fill',color = 'white')+
+  facet_wrap(~new_data3$EmploymentStatus)+
+  theme(axis.text.x = (element_text(angle = 70, hjust = 1)))+
+  ggtitle("ListingCategory vs LoanStatus vs EmploymentStatus")+
+  ylab("The proportion of LoanStatus")
+
+```
+
+我发现职业为"Full-time"和"Part-time"和"Retired"的用户的贷款总的来说都按时还款,然而还有一部分的贷款处于"Chargedoff"阶段；
+  而职业为"Employed"的用户更多的借贷都处于"Current"的状态,可能因为他们的工资的原因；
+  而"Self-employed"的用户因"Business"原因借的贷款很多都已经按时还款。
+# 多变量分析
+
+###  探讨你在这部分探究中观察到的一些关系。通过观察感兴趣的特性，是否存在相互促进的特性？
+这个我已经在上面可视化的过程中随图展示了分析
+### 这些特性之间是否存在有趣或惊人的联系呢？
+我发现用户的信用评分往往和他们的职业相关，并且他们按时还款的可能性会更高
+### 选项：你是否创建过数据集的任何模型？讨论你模型的优缺点。
+我没有对数据进行建模,在这个数据集中更多是数据是离散形式的数据，因此我更多是对他们进行定性的分析
+------
+# 定稿图与总结
+
+### 绘图一
+```{r echo=FALSE,message = FALSE, warning = FALSE, Plot_One}
+
+ggplot(data=new_data,aes(x=CreditScore,fill=LoanStatus)) +
+  geom_histogram(position = 'dodge')+
+  scale_x_continuous(breaks = seq(450,900,25),limits = c(450,900))+
+  ylab("Number of Borrower")+
+  ggtitle("CreditScore Histogram colored by LoanStatus")
+```
+
+### 描述一
+在这个直方图我们能够发现一个很有趣的规律那就是用户的信用评估和他们的还款情况并不是严格意义上的正相关关系:信用评分在(600,700)之间的用户按时还款的纪律反而随着评分的上升而下降,此后(650,900)区间的用户按时还款的几率与他们的信用评分呈现正相关关系,而信用评分较低的用户他们有很大一部分的人的贷款都是chargedoff.
+
+### 绘图二
+```{r echo=FALSE,message = FALSE, warning = FALSE, Plot_Two}
+p3<- ggplot(data =new_data1,aes(x=LoanOriginalAmount,fill=ListingCategory))+
+  geom_histogram(position = 'fill',color = 'white')+
+  scale_x_continuous(breaks = seq(0,35000,5000))+
+  coord_flip()+ylab("Propotion of ListingCategory")+
+  ggtitle("LoanOriginalAmount vs ListingCategory")
+p4 <-ggplot(data =new_data1,aes(x=LoanStatus,fill=ListingCategory))+
+  geom_bar(position = 'fill',color = 'white')+coord_flip()+
+  ylab("Propotion of ListingCategory")+
+  ggtitle("LoanStatus vs ListingCategory")
+grid.arrange(p3,p4)
+```
+
+### 描述二
+这个箱状图很好的展现了用户的贷款数额,贷款状态和贷款原因之间的关系:在大额贷款(30,000:35,000)中,多数的原因是因为"Home Improvement",其次是"DebtCon solidation";在小额贷款(0:15,000)中，多数的原因则是"Auto"其次是"Home Improvement"和"DebtCon solidation"；而贷款的原因和贷款的状态并没有太大的相关性。
+
+### 绘图三
+```{r echo=FALSE,message = FALSE, warning = FALSE, Plot_Three}
+ggplot(data =new_data,aes(x=CreditScore,y=LoanOriginalAmount,
+                          color = LoanStatus))+geom_point(alpha =0.01)+
+                          coord_cartesian(xlim = c(400,900))+
+                          geom_jitter()+
+              ggtitle("CreditScore vs LoanOriginalAmount coulr by LoanStatus")
+```
+
+### 描述三
+通过这个(三变量)的散点图，我们可以发现用户的信用评分越高,他们还款的几率也越高,但是他们打款的数额往往并不是最高的,
+信用得分在(700,850)之间的用户往往每次贷款的额度会更高,但是他们更多的贷款的状态还处于"Current"
+------
+
+# 反思
+这次的EDA项目中我选择的数据集是互联网金融的贷款数据,在这个数据集中有许多的变量,并且他们都有着不同的类型和不同的意义,我在了解了众多变量后筛选出了自己认为感兴趣的变量,大致分为介绍用户信用的,介绍用户具体信息的,介绍每笔贷款具体信息的变量,并且对其中的一些变量做了调整,也创建了新的变量来进行探索.在数据可视化的过程中我对自己感兴趣的变量都做了各种不同的尝试以及优化,但是美中不足的地方是我感觉我所选择的变量更多的是分类变量而不是数值变量,这也使得我在探索的可视化图形中有所限制。此外我所选择的数据也不太方便我从建模预测的角度进行思考,我觉得课后我可以尝试不同的角度来对这个数据集进行处理和探索.
